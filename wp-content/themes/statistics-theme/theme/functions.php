@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Statistics functions and definitions
  *
@@ -50,7 +51,7 @@ if ( ! function_exists( 'statistics_setup' ) ) :
 	 * runs before the init hook. The init hook is too late for some features, such
 	 * as indicating support for post thumbnails.
 	 */
-	function statistics_setup() {
+	function statistics_setup(): void {
 		/*
 		 * Make theme available for translation.
 		 * Translations can be filed in the /languages/ directory.
@@ -116,6 +117,9 @@ if ( ! function_exists( 'statistics_setup' ) ) :
 
 		// Remove support for block templates.
 		remove_theme_support( 'block-templates' );
+
+		// Add support for custom logo.
+		add_theme_support( 'custom-logo' );
 	}
 endif;
 add_action( 'after_setup_theme', 'statistics_setup' );
@@ -125,7 +129,7 @@ add_action( 'after_setup_theme', 'statistics_setup' );
  *
  * @link https://developer.wordpress.org/themes/functionality/sidebars/#registering-a-sidebar
  */
-function statistics_widgets_init() {
+function statistics_widgets_init(): void {
 	register_sidebar(
 		array(
 			'name'          => __( 'Footer', 'statistics' ),
@@ -138,12 +142,13 @@ function statistics_widgets_init() {
 		)
 	);
 }
+
 add_action( 'widgets_init', 'statistics_widgets_init' );
 
 /**
  * Enqueue scripts and styles.
  */
-function statistics_scripts() {
+function statistics_scripts(): void {
 	wp_enqueue_style( 'statistics-style', get_stylesheet_uri(), array(), STATISTICS_VERSION );
 	wp_enqueue_script( 'statistics-script', get_template_directory_uri() . '/js/script.min.js', array(), STATISTICS_VERSION, true );
 
@@ -151,12 +156,13 @@ function statistics_scripts() {
 		wp_enqueue_script( 'comment-reply' );
 	}
 }
+
 add_action( 'wp_enqueue_scripts', 'statistics_scripts' );
 
 /**
  * Enqueue the block editor script.
  */
-function statistics_enqueue_block_editor_script() {
+function statistics_enqueue_block_editor_script(): void {
 	wp_enqueue_script(
 		'statistics-editor',
 		get_template_directory_uri() . '/js/block-editor.min.js',
@@ -168,6 +174,7 @@ function statistics_enqueue_block_editor_script() {
 		true
 	);
 }
+
 add_action( 'enqueue_block_editor_assets', 'statistics_enqueue_block_editor_script' );
 
 /**
@@ -175,25 +182,29 @@ add_action( 'enqueue_block_editor_assets', 'statistics_enqueue_block_editor_scri
  * STATISTICS_TYPOGRAPHY_CLASSES for use when adding Tailwind Typography support
  * to the block editor.
  */
-function statistics_admin_scripts() {
+function statistics_admin_scripts(): void {
 	?>
 	<script>
 		tailwindTypographyClasses = '<?php echo esc_attr( STATISTICS_TYPOGRAPHY_CLASSES ); ?>'.split(' ');
 	</script>
 	<?php
 }
+
 add_action( 'admin_print_scripts', 'statistics_admin_scripts' );
 
 /**
  * Add the Tailwind Typography classes to TinyMCE.
  *
  * @param array $settings TinyMCE settings.
+ *
  * @return array
  */
-function statistics_tinymce_add_class( $settings ) {
+function statistics_tinymce_add_class( array $settings ): array {
 	$settings['body_class'] = STATISTICS_TYPOGRAPHY_CLASSES;
+
 	return $settings;
 }
+
 add_filter( 'tiny_mce_before_init', 'statistics_tinymce_add_class' );
 
 /**
@@ -205,3 +216,61 @@ require get_template_directory() . '/inc/template-tags.php';
  * Functions which enhance the theme by hooking into WordPress.
  */
 require get_template_directory() . '/inc/template-functions.php';
+
+/**
+ * Allow SVG uploads for administrator users.
+ *
+ * @param array $upload_mimes Allowed mime types.
+ *
+ * @return mixed
+ */
+add_filter(
+	'upload_mimes',
+	function ( $upload_mimes ) {
+		// By default, only administrator users are allowed to add SVGs.
+		// To enable more user types edit or comment the lines below but beware of
+		// the security risks if you allow any user to upload SVG files.
+		if ( ! current_user_can( 'administrator' ) ) {
+			return $upload_mimes;
+		}
+
+		$upload_mimes['svg']  = 'image/svg+xml';
+		$upload_mimes['svgz'] = 'image/svg+xml';
+
+		return $upload_mimes;
+	}
+);
+
+/**
+ * Add SVG files mime check.
+ *
+ * @param array $wp_check_filetype_and_ext Values for the extension, mime type, and corrected filename.
+ * @param string $file Full path to the file.
+ * @param string $filename The name of the file (may differ from $file due to $file being in a tmp directory).
+ * @param string[] $mimes Array of mime types keyed by their file extension regex.
+ * @param string|false $real_mime The actual mime type or false if the type cannot be determined.
+ */
+add_filter(
+	'wp_check_filetype_and_ext',
+	function ( $wp_check_filetype_and_ext, $filename, $mimes ) {
+
+		if ( ! $wp_check_filetype_and_ext['type'] ) {
+
+			$check_filetype  = wp_check_filetype( $filename, $mimes );
+			$ext             = $check_filetype['ext'];
+			$type            = $check_filetype['type'];
+			$proper_filename = $filename;
+
+			if ( $type && str_starts_with( $type, 'image/' ) && 'svg' !== $ext ) {
+				$ext  = false;
+				$type = false;
+			}
+
+			$wp_check_filetype_and_ext = compact( 'ext', 'type', 'proper_filename' );
+		}
+
+		return $wp_check_filetype_and_ext;
+	},
+	10,
+	5
+);
